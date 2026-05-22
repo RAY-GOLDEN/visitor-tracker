@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import requests
 import os
 import json
@@ -7,12 +8,12 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)
 
 APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
 SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
 MIN_TITLE_KEYWORDS = ["ceo", "owner", "founder", "director", "vp", "president"]
-
 
 def get_sheet():
     creds_dict = json.loads(GOOGLE_CREDS_JSON)
@@ -20,7 +21,6 @@ def get_sheet():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID).sheet1
-
 
 def lookup_ip(ip):
     try:
@@ -50,7 +50,6 @@ def lookup_ip(ip):
         print(f"[APOLLO ERROR] {e}")
         return None
 
-
 def save_to_sheet(lead, page):
     try:
         sheet = get_sheet()
@@ -78,32 +77,25 @@ def save_to_sheet(lead, page):
         print(f"[SHEET ERROR] {e}")
         return "error"
 
-
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "message": "Visitor tracker is running"})
-
 
 @app.route("/visitor", methods=["POST"])
 def visitor():
     data = request.get_json()
     if not data or "ip" not in data:
         return jsonify({"error": "No IP provided"}), 400
-
     ip   = data.get("ip", "")
     page = data.get("page", "unknown")
-
     print(f"[VISITOR] IP: {ip} | Page: {page}")
-
     lead = lookup_ip(ip)
     if not lead:
         print(f"[SKIP] No match for IP: {ip}")
         return jsonify({"status": "no_match"})
-
     result = save_to_sheet(lead, page)
     print(f"[LEAD] {lead}")
     return jsonify({"status": "matched", "sheet": result, "lead": lead})
-
 
 if __name__ == "__main__":
     app.run(debug=True)
