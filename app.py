@@ -1,11 +1,25 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import json
+import gspread
+from google.oauth2.service_account import Credentials
+from datetime import datetime
 
 app = Flask(__name__)
 
 APOLLO_API_KEY = os.environ.get("APOLLO_API_KEY", "")
+SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON", "")
 MIN_TITLE_KEYWORDS = ["ceo", "owner", "founder", "director", "vp", "president"]
+
+
+def get_sheet():
+    creds_dict = json.loads(GOOGLE_CREDS_JSON)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SHEET_ID).sheet1
 
 
 def lookup_ip(ip):
@@ -37,6 +51,34 @@ def lookup_ip(ip):
         return None
 
 
+def save_to_sheet(lead, page):
+    try:
+        sheet = get_sheet()
+        existing = sheet.col_values(2)
+        if lead["company"] in existing:
+            row_num = existing.index(lead["company"]) + 1
+            sheet.update_cell(row_num, 1, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            print(f"[SHEET] Updated existing: {lead['company']}")
+            return "updated"
+        sheet.append_row([
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            lead["company"],
+            lead["name"],
+            lead["title"],
+            lead["email"],
+            lead["phone"],
+            lead["linkedin"],
+            page,
+            "New",
+            ""
+        ])
+        print(f"[SHEET] Added new: {lead['company']}")
+        return "added"
+    except Exception as e:
+        print(f"[SHEET ERROR] {e}")
+        return "error"
+
+
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "message": "Visitor tracker is running"})
@@ -58,8 +100,9 @@ def visitor():
         print(f"[SKIP] No match for IP: {ip}")
         return jsonify({"status": "no_match"})
 
+    result = save_to_sheet(lead, page)
     print(f"[LEAD] {lead}")
-    return jsonify({"status": "matched", "lead": lead})
+    return jsonify({"status": "matched", "sheet": result, "lead": lead})
 
 
 if __name__ == "__main__":
