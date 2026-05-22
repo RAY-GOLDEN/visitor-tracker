@@ -1,6 +1,6 @@
-flask
-flask-cors
-gunicorn
-requests
-gspread
-google-auth
+flask==3.1.0
+flask-cors==5.0.0
+gunicorn==23.0.0
+requests==2.32.3
+gspread==6.1.4
+google-auth==2.38.0
